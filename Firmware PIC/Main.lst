@@ -1,0 +1,969 @@
+MPASM  5.51                          MAIN.ASM   7-5-2024  10:33:10         PAGE  1
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00001                 TITLE   "Emulatore EP"
+                      00002 ;******************************************************************************
+                      00003 ; Emulatore EPROM 
+                      00004 ;
+                      00005 ;
+                      00006 ; ATTENZIONE non usare le istruzioni movff x,BSR  movff x,WREG  movff x,STATUS
+                      00007 ;            con fast return attivato a causa di un bug sul PIC18Fxxxx
+                      00008 ;
+                      00009 ;******************************************************************************
+                      00010 
+                      00011     LIST            n=0,w=0,st=Off,r=dec
+                      00012     PROCESSOR       18F14K22
+                      00013     RADIX           dec
+                      00014 
+                      00015  if TEST == 1
+                      00016     #DEFINE         MODELLO              "Test"
+                      00017  else
+                      00018     #DEFINE         MODELLO              "Emulatore_EP"
+                      00019  endif
+                      00020     
+  0002                00021     CONSTANT        MAIN_RELEASE   = 2   ;Mainnumber release  (AddOn)
+  0005                00022     CONSTANT        BUG_CORRECTION = 05  ;Subnumber release   (bug correction)
+  0103                00023     CONSTANT        PIC_TYPE       = b'00100000011'    ;0x103 259d
+                      00024 
+  0000                00025     global          int_accesspoint,main_accesspoint
+                      00026 
+                      00027     #include        Costanti.inc
+                      00001        
+  0000                00002         CONSTANT   TEST             = 0     ;1 = Versione TEST per debugger
+                      00003 
+                      00004 
+                      00005         ;----------------------------------------------------------------------
+                      00006         ; 1.00
+                      00007         ;----------------------------------------------------------------------
+                      00008 
+                      00009 
+                      00010 
+                      00011 ;******************************************************************************
+                      00012 ;
+                      00013 ;                                 DEFINIZIONI
+                      00014 ;
+                      00015 ;******************************************************************************
+                      00016        
+  0103                00017         CONSTANT        PIC_TYPE       = b'00100000011'    ;0x103 259d
+                      00018 
+                      00019 
+                      00020     ifdef           __18F4525
+                      00021         #include    p18f4525.inc
+                      00022         #include    ConfigBIT_4525.inc
+                      00023         ;...................................;
+                      00024         CONSTANT    DIM_WRITE_PAGE  = 64    ;Dimensione pagina di scrittura in flash
+                      00025         CONSTANT    DIM_ERASE_PAGE  = 64    ;Dimensione pagina di cancellazione
+                      00026         CONSTANT    INI_MEMRIP      = 0x0800
+                      00027         CONSTANT    FIN_MEMRIP      = 0xBFFF
+                      00028         CONSTANT    DIM_EEPROM      = 1024   ;Dimensione EEPROM
+                      00029     endif
+                      00030     ifdef           __18F4550
+                      00031         #include    p18f4550.inc
+                      00032         #include    ConfigBIT_4550.inc
+                      00033         ;...................................;
+                      00034         CONSTANT    DIM_WRITE_PAGE  = 32    ;Dimensione pagina di scrittura in flash
+                      00035         CONSTANT    DIM_ERASE_PAGE  = 64    ;Dimensione pagina di cancellazione
+                      00036         CONSTANT    INI_MEMRIP      = 0x0800
+                      00037         CONSTANT    FIN_MEMRIP      = 0x7FFF
+                      00038         CONSTANT    DIM_EEPROM      = 256   ;Dimensione EEPROM
+                      00039     endif
+                      00040     ifdef           __18F4620
+                      00041         #include    p18f4620.inc
+                      00042         #include    ConfigBIT_4620.inc
+                      00043         CONSTANT    DIM_WRITE_PAGE  = 64    ;Dimensione pagina di scrittura in flash
+                      00044         CONSTANT    DIM_ERASE_PAGE  = 64    ;Dimensione pagina di cancellazione
+                      00045         CONSTANT    INI_MEMRIP      = 0x0800
+                      00046         CONSTANT    FIN_MEMRIP      = 0xFFFF
+                      00047         CONSTANT    DIM_EEPROM      = 1024  ;Dimensione EEPROM
+                      00048     endif
+                      00049     ifdef           __18F2480
+                      00050         CONSTANT    DIM_WRITE_PAGE  = 32    ;Dimensione pagina di scrittura in flash
+                      00051         CONSTANT    DIM_ERASE_PAGE  = 64    ;Dimensione pagina di cancellazione
+                      00052         CONSTANT    INI_MEMRIP      = 0x0800
+                      00053         CONSTANT    FIN_MEMRIP      = 0x3FFF
+                      00054     endif
+                      00055     ifdef           __18F442
+                      00056         CONSTANT    DIM_WRITE_PAGE  = 8     ;Dimensione pagina di scrittura in flash
+                      00057         CONSTANT    DIM_ERASE_PAGE  = 64    ;Dimensione pagina di cancellazione
+                      00058         CONSTANT    INI_MEMRIP      = 0x0800
+                      00059         CONSTANT    FIN_MEMRIP      = 0x3FFF
+                      00060     endif
+                      00061     ifdef           __18F14K22
+                      00062         #include    p18f14k22.inc
+                      00001         LIST
+                      00002 
+                      00003 ;==========================================================================
+                      00004 ;  MPASM PIC18F14K22 processor include
+                      00005 ; 
+                      00006 ;  (c) Copyright 1999-2013 Microchip Technology, All rights reserved
+                      00007 ;==========================================================================
+                      00008 
+                      01380         LIST
+  0010                00063         CONSTANT    DIM_WRITE_PAGE  = 16    ;Dimensione pagina di scrittura in flash
+  0040                00064         CONSTANT    DIM_ERASE_PAGE  = 64    ;Dimensione pagina di cancellazione
+  0800                00065         CONSTANT    INI_MEMRIP      = 0x0800
+  3FFF                00066         CONSTANT    FIN_MEMRIP      = 0x3FFF
+                      00067     endif
+                      00068     
+  003F                00069         CONSTANT        MASK_ERASE_PAGE = DIM_ERASE_PAGE - 1  
+                      00028     #include        Macro.inc
+                      00555         LIST
+                      00029 
+                      00030    ;--------------------- Risposte o errori --------------------------------------        
+  0000                00031     CONSTANT        WRITE_OK = 0
+  0001                00032     CONSTANT        WRITE_ERROR = 1
+  0002                00033     CONSTANT        WRITE_FLASH_NO_NEED = 2
+  0003                00034     CONSTANT        WRITE_FLASH_OVERDATA = 3
+  0004                00035     CONSTANT        WRITE_ADDRESS_ERROR = 4 
+                      00036 
+                      00037     ;--------------------- Comandi ------------------------------------------------
+  0000                00038     CONSTANT        COM_LOOP = 0
+  0001                00039     CONSTANT        COM_BOOT = 1
+  0002                00040     CONSTANT        COM_START = 2
+  0003                00041     CONSTANT        COM_READ_FLASH = 3
+  0004                00042     CONSTANT        COM_WRITE_FLASH = 4
+  0005                00043     CONSTANT        COM_READ_EE = 5
+  0006                00044     CONSTANT        COM_WRITE_EE = 6
+  0007                00045     CONSTANT        COM_READ_CONFIG = 7
+  0008                00046     CONSTANT        COM_RESET = 8
+  0009                00047     CONSTANT        COM_READ_RAM = 9
+  000A                00048     CONSTANT        COM_WRITE_RAM = 10
+  000B                00049     CONSTANT        COM_SET_COMMAND = 11
+                      00050 
+                      00051     ;--------------------- Eventi ------------------------------------------------
+  00FF                00052     CONSTANT        EVENT           = 0xFF
+                      00053 
+  0000                00054     CONSTANT        EVN_RESET = 0
+  0010                00055     CONSTANT        EVN_ERREP_FRAMING = 0x10
+  0011                00056     CONSTANT        EVN_ERREP_OVERRUN = 0x11
+  0012                00057     CONSTANT        EVN_ERREP_TIMEOUT = 0x12
+  0013                00058     CONSTANT        EVN_ERREP_BUFFULL = 0x13
+  0014                00059     CONSTANT        EVN_ERREP_CHKSUM  = 0x14
+                      00060 
+                      00061 
+                      00062 ;------------------------------------------------------------------------------
+                      00063 ;  Definizioni Flag0                                                 SUBRUOTINE
+                      00064 ;------------------------------------------------------------------------------
+                      00065     #define F_A16_H         Flag0,0 ;Attivo banco RAM High
+                      00066     #define F_01            Flag0,1 ;
+                      00067     #define F_02            Flag0,2 ;
+                      00068     #define F_03            Flag0,3 ;
+                      00069     #define F_04            Flag0,4 ;
+                      00070     #define F_05            Flag0,5 ;
+                      00071     #define F_06            Flag0,6 ;
+                      00072     #define F_07            Flag0,7 ;
+                      00073 
+                      00074 
+                      00075     #define S_00            StatoBuff,0 ;
+                      00076     #define S_01            StatoBuff,1 ;
+                      00077     #define S_02            StatoBuff,2 ;
+                      00078     #define S_03            StatoBuff,3 ;
+                      00079     #define S_04            StatoBuff,4 ;
+                      00080     #define S_05            StatoBuff,5 ;
+                      00081     #define S_06            StatoBuff,6 ;
+                      00082     #define S_07            StatoBuff,7 ;
+                      00083     
+                      00084     #define DataBusDIR  TRISC
+                      00085     #define DataBusIN   PORTC
+                      00086     #define DataBusOUT  LATC
+                      00087     
+                      00088 
+                      00089     #define CPU_RESET   LATA,RA2
+                      00090     #define CNT_CLR     LATA,RA4
+                      00091     #define CNT_CLK_A16 LATA,RA5
+                      00092     #define RAM_WR      LATB,RB4
+                      00093     #define RAM_OE      LATB,RB6
+                      00094         
+                      00095 
+                      00096 
+                      00097 ;----------------------------------------------------------------------------
+                      00098 ;  Definizioni  ACCESS Ram
+                      00099 ;  Queste locazioni si sovrappongono a quelle del BootLoader
+                      00100 ;----------------------------------------------------------------------------
+                      00101 Ram_acs_ovr     access_ovr
+                      00102 ;..................................................................................................
+                      00103 ; Registri di uso generico
+                      00104 ;..................................................................................................
+000000                00105 Reg0            res 1       ;
+000001                00106 Reg1            res 1       ;
+000002                00107 Reg2            res 1       ;
+000003                00108 Reg3            res 1       ;
+000004                00109 Reg4            res 1       ;
+000005                00110 Reg5            res 1       ;
+000006                00111 iReg0           res 1       ;
+000007                00112 iReg1           res 1       ;
+000008                00113 Flag0           res 1       ;
+000009                00114 Flag1           res 1       ;
+00000A                00115 Flag2           res 1       ;
+00000B                00116 Flag3           res 1       ;
+                      00117 ;...........................;
+00000C                00118 StatoBuff       res 1       ;FSM buffer
+00000D                00119 p_rx            res 1       ;puntatore al buffer di upload
+00000E                00120 RxChkSum        res 1       ;CheckSum di Rx
+00000F                00121 TxChkSum        res 1       ;CheckSum per Tx
+000010                00122 Rx_Command      res 1
+000011                00123 Add_L           res 1
+000012                00124 Add_H           res 1
+000013                00125 Rx_nByte        res 1
+000014                00126 CntLoadByte     res 1       ;
+000015                00127 p_Low           res 1       ;
+000016                00128 Frame_TimeOut   res 2       ;  Frame da 256 byte @ 2Mbit durata 1,3 mSec
+000018                00129 Tmr_AttBoot     res 3       ;
+00001B                00130 AddCnt          res 2       ; Indirizzo Contatori
+                      00131 
+                      00132 ;----------------------------------------------------------------------------
+                      00133 ; Banco 0x100   accessibile perchè nel boot è stato settato BRG=1
+                      00134 ;----------------------------------------------------------------------------
+                      00135 Banco100        udata_ovr   0x100
+                      00136 ;...........................;
+000100                00137 BuffRx          res  256    ; 
+                      00138 
+                      00139 
+                      00140 ;==============================================================================
+                      00141 ;                        Inizio zona riprogrammabile.
+                      00142 ; >>>>>  NON MODIFICARE LA POSIZIONE ASSOLUTA DEGLI ACCESSPOINT <<<<<<<<<<<
+                      00143 ;==============================================================================
+                      00144 version_code    code    0x800
+000800 0002           00145                 dw      MAIN_RELEASE
+000802 0005           00146                 dw      BUG_CORRECTION
+000804 0103           00147                 dw      PIC_TYPE
+000806 6D45 6C75 7461 00148                 data    MODELLO,0               ;Stringa terminata con 0
+       726F 5F65 5045 
+       0000 
+                      00149                 ;...............................;
+                      00150 access_code     code    0x820
+000820                00151 int_accesspoint 
+000820 EF?? F???      00152                 goto    Int_routine
+000824                00153 main_accesspoint
+000824 EF?? F???      00154                 goto    Init
+                      00155 ;==================================================================================================
+                      00156 ;               >>>>>  NON MODIFICARE LA POSIZIONE ASSOLUTA DEGLI ACCESSPOINT <<<<<
+                      00157 ;==================================================================================================
+                      00158 
+                      00159 
+                      00160 
+                      00161 
+                      00162 
+                      00163 ;**************************************************************************************************
+                      00164 ; INTERRUPT:    RUOTINE ASSOCIATA ALL'INTERRUPT
+                      00165 ;
+                      00166 ;               1) Allo scadere del timer 0
+                      00167 ;               2) All'arrivo di un byte dalla seriale (MIDI IN)
+                      00168 ;               ATTENZIONE usa salvataggio STATUS,BSR,WREG automatico
+                      00169 ;               NON!! usare istruzione movff con questi registri
+                      00170 ;
+                      00171 ; Livelli di Stack occupati:   3
+                      00172 ;**************************************************************************************************
+                      00173 
+000828                00174 Int_routine     
+                      00175                 ;...............................;
+000828                00176 Int_check       
+                      00177 
+                      00178 
+                      00179                 ;...............................;
+000828 0011           00180                 retfie  1                       ;
+                      00181 
+                      00182 
+                      00183 ;**************************************************************************************************
+                      00184 ; Main code
+                      00185 ;**************************************************************************************************
+00082A 6A??           00186 Init    clrf    Flag0
+00082C 6A??           00187         clrf    Flag1
+00082E 6A??           00188         clrf    Flag2
+000830 6A??           00189         clrf    Flag3
+                      00190 
+                      00191 ;==================================================================================================
+                      00192 ;               >>>>> INIZIALIZZAZIONI <<<<<
+                      00193 ;==================================================================================================
+                      00194                 
+000832 0E03           00195         movlw   b'00000011'     ;\
+000834 6E7E           00196         movwf   ANSEL           ;|Solo AN0 e AN1 attivi come ingressi analogici
+000836 6A7F           00197         clrf    ANSELH          ;/
+                      00198                         
+000838 6894           00199         setf    DataBusDIR      ;Bus Dati IN
+                      00200         
+00083A 8489           00201         bsf     CPU_RESET       ;\Reset CPU Attivo
+00083C 9492           00202         bcf     TRISA,RA2       ;/
+                      00203         
+00083E 9889           00204         bcf     CNT_CLR         ;\Contatori in reset
+000840 9892           00205         bcf     TRISA,RA4       ;/
+                      00206 
+000842 9A89           00207         bcf     CNT_CLK_A16     ;\Clock basso A16=0
+000844 9A92           00208         bcf     TRISA,RA5       ;/                
+                      00209         
+000846 888A           00210         bsf     RAM_WR          ;\RAM in lettura
+000848 9893           00211         bcf     TRISB,RB4       ;/
+                      00212         
+00084A 8C8A           00213         bsf     RAM_OE          ;\RAM in HiZ
+00084C 9C93           00214         bcf     TRISB,RB6       ;/
+                      00215 
+00084E D???           00216         rcall   ResetCnt
+                      00217 
+                      00218 
+                      00219 ;        ;...............................;
+                      00220 ;        ; Ini Timer 0                   ;
+                      00221 ;        ;...............................;
+                      00222 ;        ;          +--> 1=Timer0 8-Bit
+                      00223 ;        ;          |   +++--> Prescaler  001=1:4
+                      00224 ;        movlw   b'01000001'             ;1
+                      00225 ;        movwf   T0CON
+                      00226 ;        bcf     INTCON,TMR0IF
+                      00227 ;        bsf     INTCON,TMR0IE           ;abilita int timer 0
+                      00228 ;        bsf     T0CON,TMR0ON            ;Avvia timer0
+                      00229 ;        clrf    TMR0L
+                      00230         
+                      00231         
+                      00232 ;        bsf     INTCON,PEIE
+                      00233 ;        bsf     INTCON,GIE
+                      00234 
+                      00235 
+000850 D???           00236         rcall   IniSerMain
+                      00237 
+                      00238 ;==================================================================================================
+                      00239 ; Main Loop    (dopo 330mSec)
+                      00240 ;==================================================================================================
+000852                00241 Main_Loop
+                      00242                 ;----------------------------------------------------------------------------------
+                      00243                 ; Loop Ric Seriale
+                      00244                 ;----------------------------------------------------------------------------------
+000852 6A??           00245 Loop_RxDaPC     clrf    StatoBuff               ;Libera Buffer Rx da PC in attesa nuovo frame
+                      00246                 ;...............................;
+000854 D???           00247 LRX_2           rcall   GetBufferFDTI
+000856 66E8           00248                 tstfsz  WREG
+000858 D???           00249                 bra     LRX_2
+                      00250                 ;..................................................................................
+                      00251                 ; Buffer FDTI Caricato: Parser Comandi
+                      00252                 ;..................................................................................
+                      00253                 LBSFEL   Rx_Command,COM_LOOP,C_Loop
+00085A 50??               M         movf    Rx_Command,w
+00085C 0A00               M         xorlw   COM_LOOP
+00085E B4D8               M         skpnz
+000860 EF?? F???          M         goto    C_Loop
+                      00254                 LBSFEL   Rx_Command,COM_RESET,C_Reset
+000864 50??               M         movf    Rx_Command,w
+000866 0A08               M         xorlw   COM_RESET
+000868 B4D8               M         skpnz
+00086A EF?? F???          M         goto    C_Reset
+                      00255                 LBSFEL   Rx_Command,COM_SET_COMMAND,C_SetCommand
+00086E 50??               M         movf    Rx_Command,w
+000870 0A0B               M         xorlw   COM_SET_COMMAND
+000872 B4D8               M         skpnz
+000874 EF?? F???          M         goto    C_SetCommand
+                      00256                 BSC      CPU_RESET,PRS_end   ;------------------Comandi attivi solo se in Reset CPU
+000878 A489               M         btfss   LATA,RA2
+00087A D???               M         bra     PRS_end
+                      00257                 LBSFEL   Rx_Command,COM_READ_RAM,C_ReadRam
+00087C 50??               M         movf    Rx_Command,w
+00087E 0A09               M         xorlw   COM_READ_RAM
+000880 B4D8               M         skpnz
+000882 EF?? F???          M         goto    C_ReadRam
+                      00258                 LBSFEL   Rx_Command,COM_WRITE_RAM,C_WriteRam
+000886 50??               M         movf    Rx_Command,w
+000888 0A0A               M         xorlw   COM_WRITE_RAM
+00088A B4D8               M         skpnz
+00088C EF?? F???          M         goto    C_WriteRam
+                      00259                 ;..................................................................................
+000890 D???           00260 PRS_end         bra     Loop_RxDaPC
+                      00261 
+                      00262                 ;----------------------------------------------------------------------------------
+                      00263                 ; Test Loop
+                      00264                 ;----------------------------------------------------------------------------------
+000892 0E00           00265 C_Loop          movlw   COM_LOOP
+000894 EC?? F???      00266                 call    WrCmd_aPC
+000898 50??           00267                 movf    Add_L,w
+00089A EC?? F???      00268                 call    WrData_aPC
+00089E 50??           00269                 movf    Add_H,w
+0008A0 EC?? F???      00270                 call    WrData_aPC
+0008A4 50??           00271                 movf    Rx_nByte,w
+0008A6 EC?? F???      00272                 call    WrData_aPC
+0008AA D???           00273 CTL_1           rcall   Pop_RxFDTI              ;
+0008AC D???           00274                 rcall   WrData_aPC              ;
+0008AE 2E??           00275                 decfsz  Rx_nByte                ;
+0008B0 D???           00276                 bra     CTL_1                   ;
+0008B2 D???           00277                 rcall   WrCheckSum              ;
+                      00278                 ;...............................;
+0008B4 D???           00279                 bra     Loop_RxDaPC
+                      00280 
+                      00281                 ;----------------------------------------------------------------------------------
+                      00282                 ; Reset per entrare in Bootloader
+                      00283                 ;----------------------------------------------------------------------------------
+0008B6 00FF           00284 C_Reset         reset                                     
+                      00285 
+                      00286                 ;----------------------------------------------------------------------------------
+                      00287                 ; Set Command
+                      00288                 ;----------------------------------------------------------------------------------
+                      00289                 ; PC --> PIC                    PIC --> PC
+                      00290                 ;
+                      00291                 ; Comando SET_COMMAND           Comando SET_COMMAND
+                      00292                 ; Add_L                         Add_L 
+                      00293                 ; Add_H                         Add_H 
+                      00294                 ; <2>                           <1>
+                      00295                 ; <Command>                     <report>
+                      00296                 ; <parametro>
+                      00297                 ;..................................................................................
+0008B8 D???           00298 C_SetCommand    rcall   Pop_RxFDTI              ; --> Leggi <Command>
+0008BA 50E8           00299                 movf    WREG,w                  ;\             
+0008BC E0??           00300                 bz      CSC_0                   ;| Parsing <Command>
+0008BE 06E8           00301                 decf    WREG                    ;|
+0008C0 E0??           00302                 bz      CSC_1                   ;/
+0008C2 0EFF           00303                 movlw   0xFF                    ;\Ritorna Errore comando sconosciuto
+0008C4 D???           00304                 bra     SetReport               ;/
+                      00305                 ;...............................; 0) Reset/Run CPU
+0008C6 D???           00306 CSC_0           rcall   Pop_RxFDTI              ; --> Leggi <Parametro>
+0008C8 D???           00307                 rcall   ResetRunCPU             ; 0)Reset CPU 1)Run CPU
+0008CA 0E00           00308                 movlw   0                       ;\Ritorna <Command>
+0008CC D???           00309                 bra     SetReport               ;/
+                      00310                 ;...............................; 1) Setta Banco RAM
+0008CE D???           00311 CSC_1           rcall   Pop_RxFDTI              ; --> Leggi <Parametro>
+0008D0 D???           00312                 rcall   SetBancoRAM             ; 0)BancoBasso 1)Bancoalto
+0008D2 0E01           00313                 movlw   1                       ;\Ritorna <Command>
+0008D4 D???           00314                 bra     SetReport               ;/
+                      00315                 ;..................................................................................
+                      00316                 ; Risposta al PC comando SET_COMMAND
+                      00317                 ;..................................................................................
+0008D6 6E??           00318 SetReport       movwf   Reg0                    ;Salva TypeEvn in Reg0
+0008D8 0E0B           00319                 movlw   COM_SET_COMMAND         ;\Rispondi a PC con comando: WRITE_RAM
+0008DA D???           00320                 rcall   WrCmd_aPC               ;/
+0008DC 50??           00321                 movf    Add_L,w                 ;\Add_L
+0008DE D???           00322                 rcall   WrData_aPC              ;/
+0008E0 50??           00323                 movf    Add_H,w                 ;\Add_H
+0008E2 D???           00324                 rcall   WrData_aPC              ;/
+0008E4 0E01           00325                 movlw   1                       ;\nByte=1
+0008E6 D???           00326                 rcall   WrData_aPC              ;/
+0008E8 50??           00327                 movf    Reg0,w                  ;\Report byte
+0008EA D???           00328                 rcall   WrData_aPC              ;/
+0008EC D???           00329                 rcall   WrCheckSum              ;                  
+                      00330                 ;...............................;
+0008EE D???           00331                 bra     Loop_RxDaPC             ;Loop
+                      00332 
+                      00333                 ;----------------------------------------------------------------------------------
+                      00334                 ; Lettura di NumByte Byte RAM
+                      00335                 ;----------------------------------------------------------------------------------
+                      00336                 ; PC --> PIC                    PIC --> PC
+                      00337                 ;
+                      00338                 ; Comando READ_RAM              Comando READ_RAM
+                      00339                 ; Add_L                         Add_L 
+                      00340                 ; Add_H                         Add_H 
+                      00341                 ; <1>                           <nByte>
+                      00342                 ; nByte                         Byte_1
+                      00343                 ;                               ... 
+                      00344                 ;                               Byte_n
+                      00345                 ;
+                      00346                 ;..................................................................................
+0008F0 EC?? F???      00347 C_ReadRam       call    GoToAddress             ;
+                      00348                 ;...............................;
+0008F4 D???           00349                 rcall   Pop_RxFDTI              ;Byte da Leggere
+0008F6 6E??           00350                 movwf   Rx_nByte                ;(riutilizza la Rx_nByte che era a 1)
+                      00351                 ;...............................;
+0008F8 0E09           00352                 movlw   COM_READ_RAM            ;
+0008FA EC?? F???      00353                 call    WrCmd_aPC               ;
+0008FE 50??           00354                 movf    Add_L,w                 ;
+000900 D???           00355                 rcall   WrData_aPC              ;
+000902 50??           00356                 movf    Add_H,w                 ;
+000904 D???           00357                 rcall   WrData_aPC              ;
+000906 50??           00358                 movf    Rx_nByte,w              ;
+000908 D???           00359                 rcall   WrData_aPC              ;
+                      00360                 ;...............................; Trasmetti Rx_nByte Ram byte
+00090A 9C8A           00361                 bcf     RAM_OE                  ;RAM in lettura
+00090C 0000           00362                 nop                             ;
+00090E 5082           00363 CRR_1           movf    DataBusIN,w             ;
+000910 D???           00364                 rcall   WrData_aPC              ;
+000912 D???           00365                 rcall   IncCntAdd               ;Incrementa contatore
+000914 2E??           00366                 decfsz  Rx_nByte                ;
+000916 D???           00367                 bra     CRR_1                   ;
+000918 8C8A           00368                 bsf     RAM_OE                  ;RAM in HiZ
+                      00369                 ;...............................;
+00091A D???           00370                 rcall   WrCheckSum              ;
+00091C D???           00371                 bra     Loop_RxDaPC             ;Loop
+                      00372 
+                      00373                 ;----------------------------------------------------------------------------------
+                      00374                 ; Scrittura di NumByte Byte RAM
+                      00375                 ;----------------------------------------------------------------------------------
+                      00376                 ; PC --> PIC                    PIC --> PC
+                      00377                 ;
+                      00378                 ; Comando WRITE_RAM             Comando WRITE_RAM
+                      00379                 ; Add_L                         Add_L 
+                      00380                 ; Add_H                         Add_H 
+                      00381                 ; <nByte>  0=256                <1>
+                      00382                 ; <b0>                          Byte_1 (write report)
+                      00383                 ; <b1> 
+                      00384                 ; ...
+                      00385                 ; <bn>                       
+                      00386                 ;..................................................................................
+                      00387 C_WriteRam      BSS     CPU_RESET,CWF_0         ;
+00091E B489               M         btfsc   LATA,RA2
+000920 D???               M         bra     CWF_0
+000922 0E01           00388                 movlw   WRITE_ERROR             ;
+000924 D???           00389                 bra     WriteReport             ;
+                      00390                 ;...............................;
+000926 EC?? F???      00391 CWF_0           call    GoToAddress             ;
+00092A 8C8A           00392                 bsf     RAM_OE                  ;\Direzione Bus OUT PIC
+00092C 6A94           00393                 clrf    DataBusDIR              ;/
+00092E D???           00394 CWF_1           rcall   Pop_RxFDTI              ;
+000930 6E8B           00395                 movwf   DataBusOUT              ;
+000932 988A           00396                 bcf     RAM_WR                  ;\
+000934 0000           00397                 nop                             ;|Impulso di scrittura
+000936 888A           00398                 bsf     RAM_WR                  ;/
+000938 D???           00399                 rcall   IncCntAdd               ;Incrementa contatore
+00093A 2E??           00400                 decfsz  Rx_nByte                ;
+00093C D???           00401                 bra     CWF_1                   ;
+00093E 6894           00402                 setf    DataBusDIR              ; Bus in HiZ
+                      00403                 ;...............................;
+000940 0E00           00404                 movlw   WRITE_OK                ;
+                      00405                 ;..................................................................................
+                      00406                 ; Risposta al PC comando WRITE RAM
+                      00407                 ;..................................................................................
+000942 6E??           00408 WriteReport     movwf   Reg0                    ;Salva TypeEvn in Reg0
+000944 0E0A           00409                 movlw   COM_WRITE_RAM           ;\Rispondi a PC con comando: WRITE_RAM
+000946 D???           00410                 rcall   WrCmd_aPC               ;/
+000948 50??           00411                 movf    Add_L,w                 ;\Add_L
+00094A D???           00412                 rcall   WrData_aPC              ;/
+00094C 50??           00413                 movf    Add_H,w                 ;\Add_H
+00094E D???           00414                 rcall   WrData_aPC              ;/
+000950 0E01           00415                 movlw   1                       ;\nByte=1
+000952 D???           00416                 rcall   WrData_aPC              ;/
+000954 50??           00417                 movf    Reg0,w                  ;\Report byte
+000956 D???           00418                 rcall   WrData_aPC              ;/
+000958 D???           00419                 rcall   WrCheckSum              ;
+                      00420                 ;...............................;
+00095A D???           00421                 bra     Loop_RxDaPC             ;Loop
+                      00422                 
+                      00423 ;==================================================================================================
+                      00424 ; END Main Loop
+                      00425 ;==================================================================================================
+00095C D???           00426                 bra     Main_Loop
+                      00427                 
+                      00428                 
+                      00429 
+                      00430 ;##################################################################################################
+                      00431 ;
+                      00432 ;                                     ZONA SUBRUOTINE
+                      00433 ;
+                      00434 ;##################################################################################################
+                      00435 
+                      00436 ;--------------------------------------------------------------------------------------------------
+                      00437 ; SUBRUOTINE:   Reset/Run CPU
+                      00438 ;
+                      00439 ; Chiamata:     -set-   W       W=0 Reset CPU  W=1 Run CPU
+                      00440 ;               call    ResetRunCPU
+                      00441 ;
+                      00442 ; Usa Reg:      0,1,2   Stack:   1      FSR:    ---
+                      00443 ;--------------------------------------------------------------------------------------------------
+00095E 6894           00444 ResetRunCPU     setf    DataBusDIR      ; Bus in HiZ
+000960 888A           00445                 bsf     RAM_WR          ; Write line disabilitata
+                      00446                 BSC     WREG,0,RRC_1    ; if (Wreg,0)
+000962 A0E8               M         btfss   WREG,0
+000964 D???               M         bra     RRC_1
+                      00447                 ;.......................; =1) --> Run CPU
+000966 9C8A           00448                 bcf     RAM_OE          ; Abilita uscite RAM
+000968 9489           00449                 bcf     CPU_RESET       ;
+00096A 0012           00450                 return                  ;
+00096C                00451 RRC_1           ;.......................; =0) --> Reset CPU
+00096C 8489           00452                 bsf     CPU_RESET       ;
+00096E 8C8A           00453                 bsf     RAM_OE          ; DisAbilita uscite RAM
+000970 0E64           00454                 movlw   100             ;
+000972 D???           00455                 rcall   Rit_m           ;
+000974 0012           00456                 return                  ;
+                      00457 
+                      00458 ;--------------------------------------------------------------------------------------------------
+                      00459 ; SUBRUOTINE:   Imposta Banco RAM di lavoro
+                      00460 ;
+                      00461 ; Chiamata:     -set-   W       W=0 BancoBasso W=1 BancoAlto
+                      00462 ;               call    SetBancoRAM
+                      00463 ;
+                      00464 ; Usa Reg:      ---     Stack:   1      FSR:    ---
+                      00465 ;--------------------------------------------------------------------------------------------------
+                      00466 SetBancoRAM     BSC     WREG,0,SBR_1    ; if (Wreg,0)
+000976 A0E8               M         btfss   WREG,0
+000978 D???               M         bra     SBR_1
+                      00467                 ;.......................; =1) --> Banco alto A16=1
+00097A 80??           00468                 bsf     F_A16_H         ;
+00097C 8A89           00469                 bsf     CNT_CLK_A16     ;
+00097E D???           00470                 bra     SBR_2           ;
+                      00471                 ;.......................; =0) --> Banco basso A16=0
+000980 90??           00472 SBR_1           bcf     F_A16_H         ;
+000982 9A89           00473                 bcf     CNT_CLK_A16     ;
+000984                00474 SBR_2           ;.......................;
+                      00475 ;--------------------------------------------------------------------------------------------------
+                      00476 ; SUBRUOTINE:   Incrementa contatore
+                      00477 ;
+                      00478 ; Chiamata:     -set-   F_A16_H
+                      00479 ;               call    IncCntAdd
+                      00480 ;
+                      00481 ; Usa Reg:      0,1     Stack:   1      FSR:    ---
+                      00482 ;--------------------------------------------------------------------------------------------------
+000984 9889           00483 ResetCnt        bcf     CNT_CLR         ;Azzera Contatori
+000986 68??           00484                 setf    AddCnt          ;\AddCnt = -1
+000988 68??           00485                 setf    AddCnt+1        ;/
+00098A 8889           00486                 bsf     CNT_CLR         ;Abilita contatori al conteggio
+                      00487                 ;.......................;
+                      00488 IncCntAdd       BSS     F_A16_H,IC_1    ; if (F_A16_H)     _
+00098C B0??               M         btfsc   Flag0,0
+00098E D???               M         bra     IC_1
+                      00489                 ;.......................; =0)           __| |__  A16=0
+000990 8A89           00490                 bsf     CNT_CLK_A16     ;\
+000992 0000           00491                 nop                     ;|Incrementa contatore
+000994 9A89           00492                 bcf     CNT_CLK_A16     ;/
+000996 D???           00493                 bra     IC_2            ;               __   __
+                      00494                 ;.......................; =1)             |_|    A16=1       
+000998 9A89           00495 IC_1            bcf     CNT_CLK_A16     ;\
+00099A 0000           00496                 nop                     ;|Incrementa contatore
+00099C 8A89           00497                 bsf     CNT_CLK_A16     ;/
+                      00498                 ;.......................;
+00099E 3E??           00499 IC_2            incfsz  AddCnt          ;
+0009A0 0012           00500                 return                  ;
+0009A2 2A??           00501                 incf    AddCnt+1        ;
+0009A4 0012           00502                 return
+                      00503 
+                      00504 ;--------------------------------------------------------------------------------------------------
+                      00505 ; SUBRUOTINE:   Setta indirizzo Add sui contatori (max 86mSec@64Mhz)
+                      00506 ;
+                      00507 ; Chiamata:     -set-   Add_L,Add_H
+                      00508 ;               call    SetAddress
+                      00509 ;
+                      00510 ; Usa Reg:      0,1     Stack:   1      FSR:    ---
+                      00511 ;--------------------------------------------------------------------------------------------------
+0009A6 50??           00512 GoToAddress     movf    Add_H,w         ;\High
+0009A8 5C??           00513                 subwf   AddCnt+1,w      ;/
+0009AA E1??           00514                 bnz     GTA_1           ;
+0009AC 50??           00515                 movf    Add_L,w         ;\Low
+0009AE 5C??           00516                 subwf   AddCnt,w        ;/
+0009B0                00517 GTA_1           ;.......................;
+0009B0 B4D8           00518                 skpnz                   ;
+0009B2 0012           00519                 return                  ;
+                      00520                 ;.......................;
+0009B4 E2??           00521                 bc      GTA_2           ;Salta se AddCnt > Add
+0009B6 D???           00522                 rcall   IncCntAdd       ;
+0009B8 D???           00523                 bra     GoToAddress     ;
+                      00524                 ;.......................;
+0009BA D???           00525 GTA_2           rcall   ResetCnt        ;Reset in uscita e '1' in cnt
+0009BC D???           00526                 bra     GoToAddress     ;
+                      00527 
+                      00528 
+                      00529         
+                      00530 
+                      00531 
+                      00532 ;--------------------------------------------------------------------------------------------------
+                      00533 ; SUBRUOTINE:   Invia evento al PC
+                      00534 ;
+                      00535 ; Frame UART <Evnt> <Add_L> <Add_H> <nByte=1> <TypeEvn> <CheckSum>;  (nByte 1-255, 0=256)
+                      00536 ; 
+                      00537 ; CheckSum = -{ <Evnt> + <Add_L> + <Add_H> + <nByte> + <TypeEvn>}
+                      00538 ;
+                      00539 ; Usa Reg:      Reg0    Stack:   2      FSR:    ---
+                      00540 ;--------------------------------------------------------------------------------------------------
+0009BE 6E??           00541 Evnt_aPC        movwf   Reg0                    ;Salva TypeEvn in Reg0
+0009C0 0EFF           00542                 movlw   EVENT                   ;\Rispondi a PC con comando: EVENT
+0009C2 D???           00543                 rcall   WrCmd_aPC               ;/
+0009C4 50??           00544                 movf    Add_L,w                 ;\Add_L
+0009C6 D???           00545                 rcall   WrData_aPC              ;/
+0009C8 50??           00546                 movf    Add_H,w                 ;\Add_H
+0009CA D???           00547                 rcall   WrData_aPC              ;/
+0009CC 0E01           00548                 movlw   1                       ;\nByte=1
+0009CE D???           00549                 rcall   WrData_aPC              ;/
+0009D0 50??           00550                 movf    Reg0,w                  ;\TypeEvn = W
+0009D2 D???           00551                 rcall   WrData_aPC              ;/
+0009D4 D???           00552                 rcall   WrCheckSum              ;
+0009D6 0012           00553                 return
+                      00554 
+                      00555 
+                      00556 ;--------------------------------------------------------------------------------------------------
+                      00557 ; Deve essere richiamata in polling per ricevere byte da PC
+                      00558 ;
+                      00559 ;               call    GetBufferFDTI
+                      00560 ; Ritorna       -W-     0:  Ricezione OK messaggio nel buffer
+                      00561 ;                       1:  Ricezione in corso
+                      00562 ;                       2:  Errore di Framing
+                      00563 ;                       3:  Errore di overrun
+                      00564 ;                       4:  Errore di TimeOut
+                      00565 ;                       5:  Errore buffer non letto
+                      00566 ;                       6:  Errore di CheckSum
+                      00567 ;
+                      00568 ;  L_1          call    GetBufferFDTI
+                      00569 ;               tstfsz  WREG
+                      00570 ;               bra     L_1
+                      00571 ;               
+                      00572 ;
+                      00573 ; Usa Reg:      Reg0    Stack:   2
+                      00574 ;--------------------------------------------------------------------------------------------------
+                      00575 
+0009D8                00576 GetBufferFDTI   ;...............................;
+                      00577 UL_1            BSC     S_00,UL_4               ; Salta se è in Stato 0
+0009D8 A0??               M         btfss   StatoBuff,0
+0009DA D???               M         bra     UL_4
+                      00578                 ;...............................;
+                      00579                 ; Decrementa countdown          ;
+                      00580                 ;...............................;
+0009DC 2E??           00581                 decfsz  Frame_TimeOut
+0009DE D???           00582                 bra     UL_4
+0009E0 2E??           00583                 decfsz  Frame_TimeOut+1
+0009E2 D???           00584                 bra     UL_4
+                      00585                 ;...............................;
+0009E4 50AE           00586                 movf    RCREG,w                 ;Reset errore framing
+0009E6 98AB           00587                 bcf     RCSTA,CREN              ;Reset errore overrun
+0009E8 88AB           00588                 bsf     RCSTA,CREN              ;Riabilita seriale
+0009EA 0E12           00589                 movlw   EVN_ERREP_TIMEOUT       ;-> Errore di TimeOut
+0009EC D???           00590                 bra     UL_err                  ;
+                      00591                 ;...............................;
+0009EE AA9E           00592 UL_4            btfss   PIR1,RCIF               ;\Controlla se è arrivato un byte
+0009F0 D???           00593                 bra     UL_7                    ;/
+                      00594                 BSS     RCSTA,FERR,UL_2         ;Errore di Framing (resettato leggendo RCREG)
+0009F2 B4AB               M         btfsc   RCSTA,FERR
+0009F4 D???               M         bra     UL_2
+                      00595                 BSS     RCSTA,OERR,UL_3         ;Errore di Overrun (resettato con CREN=0)
+0009F6 B2AB               M         btfsc   RCSTA,OERR
+0009F8 D???               M         bra     UL_3
+                      00596                 BSS     S_05,UL_5               ;Esci se il buffer è full (non è stato letto)
+0009FA BA??               M         btfsc   StatoBuff,5
+0009FC D???               M         bra     UL_5
+0009FE 50AE           00597                 movf    RCREG,w                 ;Leggi byte dalla UART
+000A00 D???           00598                 rcall   Push_RxBuff             ;inserisci il byte nel buffer
+000A02 AA??           00599                 btfss   S_05                    ;verifica se il messaggio è completo
+000A04 0C01           00600 UL_7            retlw   1                       ;Return (1)-> Ricezione in corso
+000A06 66??           00601                 tstfsz  RxChkSum                ;
+000A08 D???           00602                 bra     UL_6                    ;
+000A0A 0C00           00603                 retlw   0                       ;Return (0)-> Ricezione OK
+000A0C                00604 UL_2            ;...............................; -> Gestione errore di framing (no stop bit detected)
+000A0C 50AE           00605                 movf    RCREG,w                 ;Reset errore
+000A0E 0E10           00606                 movlw   EVN_ERREP_FRAMING       ;-> Errore di Framing
+000A10 D???           00607                 bra     UL_err                  ;
+                      00608                 ;...............................; -> Gestione errore di overrun (byte ricevuto con RCREG
+                             non letto)
+000A12 98AB           00609 UL_3            bcf     RCSTA,CREN              ;Reset errore
+000A14 88AB           00610                 bsf     RCSTA,CREN              ;Riabilita seriale
+000A16 0E11           00611                 movlw   EVN_ERREP_OVERRUN       ;-> Errore di overrun
+000A18 D???           00612                 bra     UL_err                  ;
+                      00613                 ;...............................; -> Gestione errore di buffer non letto
+000A1A 0E13           00614 UL_5            movlw   EVN_ERREP_BUFFULL       ;-> Errore buffer non letto
+000A1C D???           00615                 bra     UL_err                  ;
+                      00616                 ;...............................;
+000A1E 0E14           00617 UL_6            movlw   EVN_ERREP_CHKSUM        ;-> Errore di CheckSum               
+000A20 D???           00618 UL_err          rcall   Evnt_aPC                ;
+000A22 6A??           00619                 clrf    StatoBuff               ;
+000A24 0C01           00620                 retlw   1                       ;Return (1)-> Ricezione in corso
+                      00621 
+                      00622 
+                      00623 ;--------------------------------------------------------------------------------------------------
+                      00624 ; SUBRUOTINE:   Inserisce un byte nel buffer di ricezione da PC
+                      00625 ;               Il buffer è lineare da DIM_BUFF_FDTI byte massimi
+                      00626 ;               La struttura dati che il buffer si aspetta è coì formata:
+                      00627 ;
+                      00628 ; Struttura dati ricevuti da PC
+                      00629 ;
+                      00630 ; Frame UART <Comando> <Add_L> <Add_H> <nByte> <b0> <b1> .. <bn> <CheckSum>;  (nByte 1-255, 0=256)
+                      00631 ; 
+                      00632 ; CheckSum = -{ <Comando> + <Add_L> + <Add_H> + <nByte> + <b0> + <b1> + .. + <bn> }
+                      00633 ;
+                      00634 ;               Il byte di checksum viene memorizzato nel buffer dopo l'ultimo byte
+                      00635 ;
+                      00636 ; Chiamata:     -set-   W
+                      00637 ;               call    Push_RxFDTI
+                      00638 ;               Il flag F_RxMsgCmpl viene settato quando il messaggio è stato completato
+                      00639 ;               e viene azzerato quando è stato letto e interpretato
+                      00640 ;
+                      00641 ; Usa Reg:      Reg0    Stack:   1
+                      00642 ;--------------------------------------------------------------------------------------------------
+  0015                00643         CONSTANT    SET_TIMEOUT     = 21        ;Time out frame 6mSec (un frame da 256 1,3mSec
+                      00644 
+                      00645 Push_RxBuff     BSS     S_00,PRFT_1             ;
+000A26 B0??               M         btfsc   StatoBuff,0
+000A28 D???               M         bra     PRFT_1
+000A2A 6E??           00646                 movwf   Rx_Command              ;Leggi <Comando> -> Rx_Command
+000A2C 6E??           00647                 movwf   RxChkSum                ;
+000A2E 80??           00648                 bsf     S_00                    ;
+000A30 6A??           00649                 clrf    p_rx                    ;Predispone alla scrittura del buffer
+                      00650                 ;...............................;Start contatore timeout
+000A32 6A??           00651                 clrf    Frame_TimeOut           ;
+000A34 0E15           00652                 movlw   SET_TIMEOUT             ;
+000A36 6E??           00653                 movwf   Frame_TimeOut+1         ;
+000A38 D???           00654                 bra     PRFT_end                ;
+                      00655                 ;...............................;
+                      00656 PRFT_1          BSS     S_01,PRFT_2             ;
+000A3A B2??               M         btfsc   StatoBuff,1
+000A3C D???               M         bra     PRFT_2
+000A3E 6E??           00657                 movwf   Add_L                   ;Leggi <Add_L> -> Add_L
+000A40 26??           00658                 addwf   RxChkSum                ;
+000A42 82??           00659                 bsf     S_01                    ;
+000A44 D???           00660                 bra     PRFT_end                ;
+                      00661                 ;...............................;
+                      00662 PRFT_2          BSS     S_02,PRFT_3             ;
+000A46 B4??               M         btfsc   StatoBuff,2
+000A48 D???               M         bra     PRFT_3
+000A4A 6E??           00663                 movwf   Add_H                   ;Leggi <Add_H> -> Add_H
+000A4C 26??           00664                 addwf   RxChkSum                ;
+000A4E 84??           00665                 bsf     S_02                    ;
+000A50 D???           00666                 bra     PRFT_end                ;
+                      00667                 ;...............................;
+                      00668 PRFT_3          BSS     S_03,PRFT_4             ;
+000A52 B6??               M         btfsc   StatoBuff,3
+000A54 D???               M         bra     PRFT_4
+000A56 6E??           00669                 movwf   Rx_nByte                ;Leggi <nByte> -> Rx_nByte   (0 = 256 byte)
+000A58 26??           00670                 addwf   RxChkSum                ;
+000A5A 86??           00671                 bsf     S_03                    ;
+000A5C D???           00672                 bra     PRFT_end                ;
+                      00673                 ;...............................;
+                      00674 PRFT_4          BSS     S_04,PRFT_5             ;
+000A5E B8??               M         btfsc   StatoBuff,4
+000A60 D???               M         bra     PRFT_5
+000A62 6E??           00675                 movwf   Reg0                    ;Leggi <b0> + <b1> + .. + <bn>
+000A64 EE?? F0??      00676                 lfsr    1,BuffRx                ;
+000A68 50??           00677                 movf    p_rx,w                  ;puntatore scrittura
+000A6A 26E1           00678                 addwf   FSR1L                   ;indirizzo di scrittura dati
+000A6C 50??           00679                 movf    Reg0,w                  ;
+000A6E 26??           00680                 addwf   RxChkSum                ;
+000A70 6EE7           00681                 movwf   INDF1                   ;scrive il dato sul buffer
+000A72 2A??           00682                 incf    p_rx                    ;incrementa puntatore
+                      00683                 SSFEF   p_rx,Rx_nByte           ;Per tutti i byte contenuti nel messaggio
+000A74 50??               M         movf    p_rx,w
+000A76 18??               M         xorwf   Rx_nByte,w
+000A78 A4D8               M         skpz
+000A7A D???           00684                 bra     PRFT_end                ;
+000A7C 88??           00685                 bsf     S_04                    ;
+000A7E D???           00686                 bra     PRFT_end                ;
+                      00687                 ;...............................;
+                      00688                 ; Messaggio completato          ;
+                      00689                 ;...............................;
+000A80 26??           00690 PRFT_5          addwf   RxChkSum                ;
+000A82 6A??           00691                 clrf    p_rx                    ;Predispone alla lettura del buffer
+000A84 8A??           00692                 bsf     S_05                    ;
+                      00693                 ;...............................;
+000A86 0012           00694 PRFT_end        return
+                      00695 
+                      00696 
+                      00697 ;--------------------------------------------------------------------------------------------------
+                      00698 ; SUBRUOTINE:   Estrae un byte nel buffer di ricezione da FTDI
+                      00699 ;               Il buffer è lineare e occupa al massimo 67 byte
+                      00700 ;
+                      00701 ; Chiamata:     call    Pop_RxFDTI
+                      00702 ;
+                      00703 ; Usa Reg:      ---     Stack:   1      FSR:    2
+                      00704 ;--------------------------------------------------------------------------------------------------
+                      00705 Pop_RxFDTI      BSC     S_05,PopRS1_end         ;Esci se il buffer NON è caricato
+000A88 AA??               M         btfss   StatoBuff,5
+000A8A D???               M         bra     PopRS1_end
+000A8C EE?? F0??      00706                 lfsr    2,BuffRx                ;
+000A90 50??           00707                 movf    p_rx,w                  ;puntatore scrittura
+000A92 26D9           00708                 addwf   FSR2L                   ;indirizzo di scrittura dati
+000A94 2A??           00709                 incf    p_rx                    ;incrementa puntatore
+000A96 50DF           00710                 movf    INDF2,w                 ;legge il dato dalla coda
+                      00711                 ;...............................;
+000A98 0012           00712 PopRS1_end      return
+                      00713 
+                      00714 
+                      00715 ;--------------------------------------------------------------------------------------------------
+                      00716 ; Invia dati al PC
+                      00717 ; - Attende che si liberi il buffer di trasmissione UART
+                      00718 ; - Calcola il CheckSum
+                      00719 ;
+                      00720 ; Usa Reg:      ---     Stack:   1      FSR:    ---
+                      00721 ;--------------------------------------------------------------------------------------------------
+000A9A 6A??           00722 WrCmd_aPC       clrf    TxChkSum        ;\Azzera CheckSum
+000A9C D???           00723                 bra     WrData_aPC      ;/
+                      00724                 ;.......................;
+000A9E 50??           00725 WrCheckSum      movf    TxChkSum,w      ;\Calcola CheckSum
+000AA0 0800           00726                 sublw   0               ;/
+                      00727                 ;.......................;
+000AA2 26??           00728 WrData_aPC      addwf   TxChkSum        ;Calcola CheckSum (azzerato quando esegue WrCheckSum)
+000AA4 A89E           00729 Wait_TXaPC      btfss   PIR1,TXIF       ;\Attendi Trasmettitore UART libero
+000AA6 D???           00730                 bra     Wait_TXaPC      ;/
+000AA8 6EAD           00731                 movwf   TXREG           ;Trasmetti byte
+000AAA 0012           00732                 return
+                      00733 
+                      00734 
+                      00735 ;--------------------------------------------------------------------------------------------------
+                      00736 ; SUBRUOTINE:   Inizializzazione delle variabili della seriale
+                      00737 ;               Questa SubRuotine viene richiamata in modalità UpGrade
+                      00738 ;
+                      00739 ; Chiamata:     rcall   Ini_Seriale
+                      00740 ;
+                      00741 ; Usa:          Reg:    ---     
+                      00742 ;--------------------------------------------------------------------------------------------------
+000AAC 9A9D           00743 IniSerMain      bcf     PIE1,RCIE               ;\Disabilita Interruzioni UART
+000AAE 989D           00744                 bcf     PIE1,TXIE               ;/
+000AB0 967F           00745                 bcf     ANSELH,ANS11            ;Ingresso RX digitale
+                      00746                 ;...............................;
+000AB2 96B8           00747                 bcf     BAUDCON,BRG16           ; 0 = 8-bit Baud Rate Generator
+000AB4 84AC           00748                 bsf     TXSTA,BRGH              ; 1 = high speed
+000AB6 0E01           00749                 movlw   d'1'                    ; 2Mbaud con fc=64Mhz
+000AB8 6EAF           00750                 movwf   SPBRG                   ; 
+000ABA 8EAB           00751                 bsf     RCSTA,SPEN              ;Abilita pin Tx e Rx
+000ABC 8AAC           00752                 bsf     TXSTA,TXEN              ;Abilita trasmissione
+000ABE 88AB           00753                 bsf     RCSTA,CREN              ;Abilita ricezione
+                      00754                 ;...............................;
+000AC0 9A9E           00755                 bcf     PIR1,RCIF               ;\reset flag d'interrupt
+000AC2 989E           00756                 bcf     PIR1,TXIF               ;/
+                      00757                 ;...............................;
+000AC4 6A??           00758                 clrf    TxChkSum                ;
+000AC6 0012           00759                 return                          ;
+                      00760  
+                      00761 
+                      00762 
+                      00763 ;==============================================================================
+                      00764 ;
+                      00765 ;       RUOTINE DI RITARDO
+                      00766 ;
+                      00767 ;==============================================================================
+                      00768 
+                      00769 ;--------------------------------------------------------------------------------------------------
+                      00770 ; SUBRUOTINE:   Rit_d
+                      00771 ;
+                      00772 ; Operazione:   RUOTINE DI RITARDO in decimi di secondo a 20MHz
+                      00773 ;
+                      00774 ; Chiamata:     movlw   d'x'            ;x = decimi di secondo da 1 a 255
+                      00775 ;               call    Rit_d           ;
+                      00776 ;
+                      00777 ; Chiamata da:  ram_0   Lavora in:      prom_0          Stack:   2
+                      00778 ; Ritorna:      ram_0   Usa Reg:        0,1,2,3            
+                      00779 ;--------------------------------------------------------------------------------------------------
+000AC8 0E01           00780 Rit_d1  movlw   d'1'
+000ACA 6E??           00781 Rit_d   movwf   Reg3
+000ACC 0E64           00782 Rit_2   movlw   d'100'
+000ACE D???           00783         rcall   Rit_m
+000AD0 2E??           00784         decfsz  Reg3
+000AD2 D???           00785         bra     Rit_2
+000AD4 0012           00786         return
+                      00787  
+                      00788 
+                      00789 ;--------------------------------------------------------------------------------------------------
+                      00790 ; SUBRUOTINE:   Rit_m,Rit_1m
+                      00791 ;
+                      00792 ; Operazione:   RUOTINE DI RITARDO in millisecondi a 20MHz
+                      00793 ;
+                      00794 ; Chiamata:     movlw   d'x'            ;x = millisecondi da 2 a 255
+                      00795 ;               call    Rit_m           ;
+                      00796 ;
+                      00797 ;               call    Rit_1m          ;1 millisecondo
+                      00798 ;
+                      00799 ; Chiamata da:  ram_0   Lavora in:      prom_0          Stack:   1
+                      00800 ; Ritorna:      ram_0   Usa Reg:        0,1,2            
+                      00801 ;--------------------------------------------------------------------------------------------------
+000AD6 6E??           00802 Rit_m   movwf   Reg2                    ;\Imposta loop Esterno
+000AD8 D???           00803         bra     Rit_1                   ;/
+                      00804         ;...............................;
+000ADA 0E01           00805 Rit_1m  movlw   d'1'                    ;
+000ADC 6E??           00806         movwf   Reg2                    ;
+                      00807         ;...............................;
+000ADE 0E15           00808 Rit_1   movlw   d'21'                   ;\
+000AE0 6E??           00809         movwf   Reg1                    ;|
+000AE2 0EC4           00810         movlw   d'196'                  ;|
+000AE4 6E??           00811         movwf   Reg0                    ;|Ritardo di 1.040 mSec a 64Mhz
+000AE6 2E??           00812 Rit_0   decfsz  Reg0                    ;|
+000AE8 D???           00813         bra     Rit_0                   ;|
+000AEA 2E??           00814         decfsz  Reg1                    ;|
+000AEC D???           00815         bra     Rit_0                   ;/
+                      00816         ;...............................;
+000AEE 2E??           00817         decfsz  Reg2                    ;\EndFor Loop Esterno
+000AF0 D???           00818         bra     Rit_1                   ;/
+000AF2 0012           00819         return                          ;
+                      00820 
+                      00821 
+                      00822         end
+
+Errors   :     0
+Warnings :     0 reported,     0 suppressed
+Messages :     0 reported,     0 suppressed
+
+
