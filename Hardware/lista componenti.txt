@@ -1,0 +1,71 @@
+
+R1        100K
+R2        100K
+R3        1K
+R4        1K
+R5        1K
+R6        4K7
+R7        100
+R8        470
+R9        120
+R10       10K
+R11       4K7
+R12       100K
+R13       100K
+R14       100K
+R15       100K
+R16       10K
+R17       1K
+R18       1K
+R19       100
+R20       100
+
+C1        100n
+C2        100n
+C3        100n
+C4        100n
+C5        100n
+C6        100n
+C7        100n
+C8        100n
+C9        100n
+C10       100n
+C11       47u 16V
+C12       100n
+
+CN1       PINHD-1X6
+CN2       PINHD-1X5
+CN3	  PINHD-2X15	EPROM
+
+Led1	  CPU_RESET Rosso
+Led2	  RDY       Verde
+
+D1        BAT42
+D2        BAT42
+D3        BAT42
+D4        BAT42
+D5        BAT42
+D6        BAT42
+D7        BAT42
+D8        BAT42
+(D9)      BAT42
+
+IC1       PIC18F14K22
+IC2       74HCT590N
+IC3       74HCT590N
+IC4       74HCT541N
+IC5       74HCT244N
+IC6       74HCT244N
+IC7       62256 low
+IC8       62256 high
+IC9       74HC05N
+(IC10)    628128P
+
+OC1       TLP2361
+OC2       TLP2361
+
+S1        Reset
+
+USB1      Modulo con FTDI232M
+
+

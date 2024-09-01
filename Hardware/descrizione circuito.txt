@@ -1,0 +1,22 @@
+Questo circuito permette di sostituire una eprom in una qualsiasi scheda a microprocessore 8 bit per consentire un rapido test e correzione del firmware sotto sviluppo, senza dover cancellare e riprogrammare ogni volta la eprom reale.
+È possibile emulare eprom dalla 2708 (1K) alla 27512 (64K), la selezione è gestita direttamente a livello software dalla dashboard.
+
+Per le eprom a 24 pin (2708, 2716 e 2732) è possibile, spazio permettendo, usare lo stesso connettore DIL a 28 pin, lasciando i 4 pin in alto fuori dallo zoccolo, viceversa servirà cablare un secondo cavo piatto con connettore DIL a 24 pin
+Con un cavo piatto di circa 30 cm di lunghezza ho testato il funzionamento con Z80 fino a 4,8 MHz senza notare malfunzionamenti o errori. Non è stato provato a frequenze più alte, eventualmente si può ridurre la lunghezza del cavo piatto.
+
+Durante la fase di scrittura della RAM da parte del programma di gestione lato PC è possibile mantenere resettato il microprocessore della scheda sotto sviluppo, per poi venire avviato automaticamente al termine del trasferimento in RAM del codice.
+Non è prevista alcuna alimentazione esterna per l'emulatore in quanto viene alimentato direttamente dalla scheda sotto test tramite D1 (o D2 in caso di eprom a 24 pin). Se è necessario mantenere in RAM il codice da testare anche a scheda spenta è necessario aggiungere il diodo opzionale D9, ponticellando anche il jumper SJ1.
+Così facendo però si perde l'isolamento galvanico fra il PC e il computer sotto test.
+
+Per quanto riguarda il funzionamento circuitale, il tutto è gestito dal microprocessore PIC a bordo che comunica via modulo USB al programma dashboard su PC.
+Il PIC riceve dal PC i bytes da scrivere sequenzialmente nella memoria RAM e seleziona l'indirizzo da scrivere tramite i contatori IC2 e IC3. Durante l'operazione si può resetare la CPU esterna tramite le porte NOT OC di IC9
+Terminato il caricamento della RAM e sbloccata la CPU, la RAM non è più indirizzata dal PIC ma proprio dal Bus indirizzi del computer sotto test tramite i buffer IC5 e IC6. I dati della RAM invece vengono letti dal sistema sotto test tramite il buffer IC4 e sono accessibili solo in lettura, come una eprom vera.
+
+Come buffer si può usare sia una coppia di RAM tipo 62256 in formato DIL stretto (cache PC 486), per un totale di 64K, che un singolo chip da 128K tipo 628128P che verrà gestito in due banchi indipendenti da 64K da commutare in tempo reale da dashboard
+In quest'ultimo caso non è necesario montare R3.
+
+Il cavo piatto di collegamento va crimpato da un lato su un connettore IDC a 30 pin, lasciando vuoto il pin 1 (usare un cavo a 29 fili, crimpati dal pin 2 al 30). 
+Dall'altro lato va crimpato il connettore DIL a 28 pin, posizionando il primo filo (proveniente dal pin 2 dell'IDC) sul pin 1 del DIL
+Il filo 30 proveniente dall'IDC non va crimpato sul DIL ma va tenuto separato e usato come uscita OC per il controllo Reset della CPU da testare.
+
+Sul connettore a 5 pin per il controllo CPU, oltre al Reset sono disponibili due pin generici di I/O collegati direttamente al PIC, al momento non sono usati.
